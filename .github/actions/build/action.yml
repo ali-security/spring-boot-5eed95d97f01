@@ -13,6 +13,14 @@ inputs:
     required: false
     default: false
     description: 'Whether to publish artifacts ready for deployment to Artifactory'
+  build-tasks:
+    required: false
+    default: 'build'
+    description: 'Gradle tasks run by the build (sealed fork: scoped to the sealed module to fit the CI time budget)'
+  publish-tasks:
+    required: false
+    default: 'publishAllPublicationsToDeploymentRepository'
+    description: 'Gradle tasks that publish to the local deployment repository'
   gradle-enterprise-secret-access-key:
     required: false
     description: 'The secret access key for authentication with ge.spring.io'
@@ -58,6 +66,14 @@ runs:
         echo systemProp.org.gradle.java.installations.auto-detect=false >> $HOME/.gradle/gradle.properties
         echo systemProp.org.gradle.java.installations.auto-download=false >> $HOME/.gradle/gradle.properties
         echo systemProp.org.gradle.java.installations.paths=${{ format('$JAVA_HOME_{0}_X64', inputs.java-version) }} >> $HOME/.gradle/gradle.properties
+    - name: Configure Test Result Reporting
+      shell: bash
+      run: |
+        gradle_user_home="${GRADLE_USER_HOME:-$HOME/.gradle}"
+        gradle_user_home="${gradle_user_home//\\//}"
+        mkdir -p "$gradle_user_home/init.d"
+        cp .github/seal-test-results.gradle "$gradle_user_home/init.d/seal-test-results.gradle"
+        echo "Installed test result reporting init script in $gradle_user_home/init.d"
     - name: Build
       id: build
       if: ${{ !inputs.publish }}
@@ -67,7 +83,7 @@ runs:
         GRADLE_ENTERPRISE_ACCESS_KEY: ${{ inputs.gradle-enterprise-secret-access-key }}
         GRADLE_ENTERPRISE_CACHE_USERNAME: ${{ inputs.gradle-enterprise-cache-user }}
         GRADLE_ENTERPRISE_CACHE_PASSWORD: ${{ inputs.gradle-enterprise-cache-password }}
-      run: ./gradlew build
+      run: ./gradlew ${{ inputs.build-tasks }}
     - name: Build and Publish
       id: build-and-publish
       if: ${{ inputs.publish }}
@@ -77,7 +93,7 @@ runs:
         GRADLE_ENTERPRISE_ACCESS_KEY: ${{ inputs.gradle-enterprise-secret-access-key }}
         GRADLE_ENTERPRISE_CACHE_USERNAME: ${{ inputs.gradle-enterprise-cache-user }}
         GRADLE_ENTERPRISE_CACHE_PASSWORD: ${{ inputs.gradle-enterprise-cache-password }}
-      run: ./gradlew -PdeploymentRepository=$(pwd)/deployment-repository build publishAllPublicationsToDeploymentRepository
+      run: ./gradlew -PdeploymentRepository=$(pwd)/deployment-repository ${{ inputs.build-tasks }} ${{ inputs.publish-tasks }}
     - name: Read Version From gradle.properties
       id: read-version
       shell: bash
